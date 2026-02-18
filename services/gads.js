@@ -1,32 +1,31 @@
-export default async function (payload, env) {
+export default async function ({ gadsPayload, gadsCustomerId, gadsAccessToken, gadsDeveloperToken }) {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 5000)
 
     try {
         const res = await fetch(
-            `https://googleads.googleapis.com/v14/customers/${env.GADS_CUSTOMER_ID}:uploadClickConversions`,
+            `https://googleads.googleapis.com/v14/customers/${gadsCustomerId}:uploadClickConversions`,
             {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${env.GADS_ACCESS_TOKEN}`,
-                    'developer-token': env.GADS_DEVELOPER_TOKEN
+                    'Authorization': `Bearer ${gadsAccessToken}`,
+                    'developer-token': gadsDeveloperToken
                 },
-                body: JSON.stringify(payload),
+                body: JSON.stringify(gadsPayload),
                 signal: controller.signal
             }
         )
 
         if (!res.ok) {
             const text = await res.text()
-            return 'Request error: ' + text
-            return
+            return 'Event request error: ' + text
         }
     } catch {
-        return 'Request failed'
+        return 'Event request failed'
     } finally {
         clearTimeout(timeout)
     }
 
-    return 'Processed successfully'
+    return 'Event processed successfully'
 }

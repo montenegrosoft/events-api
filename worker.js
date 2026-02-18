@@ -84,6 +84,12 @@ export default {
       return new Response('Invalid JSON', { status: 400, headers: corsHeaders })
     }
 
+    const metaAccessToken = env.META_ACCESS_TOKEN || null
+    const gaSecretKey = env.GA_SECRET_KEY || null
+    const gadsCustomerId = env.GADS_CUSTOMER_ID || null
+    const gadsAccessToken = env.GADS_ACCESS_TOKEN || null
+    const gadsDeveloperToken = env.GADS_DEVELOPER_TOKEN || null
+
     body = toCamelDeep(body)
 
     const { data = {}, meta = {} } = body
@@ -107,10 +113,13 @@ export default {
       gaMeasurementId
     } = meta
 
-    if (!eventId) return new Response('Event ID is missing', { status: 400, headers: corsHeaders })
-    if (!userId) return new Response('User ID is missing', { status: 400, headers: corsHeaders })
     if (!metaEvent && !gaEvent && !gadsConversionLabel) return new Response('Event/conversion is missing', { status: 400, headers: corsHeaders })
+
+    if (!eventId) return new Response('Event ID is missing', { status: 400, headers: corsHeaders })
+
     if (!eventUrl) return new Response('Event URL is missing', { status: 400, headers: corsHeaders })
+
+    if (!userId) return new Response('User ID is missing', { status: 400, headers: corsHeaders })
 
     const headers = Object.fromEntries(request.headers.entries())
 
@@ -137,11 +146,11 @@ export default {
     const timestamp = Math.floor(Date.now() / 1000)
     const eventUtms = extractUtms(eventUrl)
 
-    let metaPromise = Promise.resolve('Skipped')
-    let gaPromise = Promise.resolve('Skipped')
-    let gadsPromise = Promise.resolve('Skipped')
+    let metaPromise = Promise.resolve('Event skipped')
+    let gaPromise = Promise.resolve('Event skipped')
+    let gadsPromise = Promise.resolve('Event skipped')
 
-    if (metaEvent && metaPixelId && env.FB_ACCESS_TOKEN) {
+    if (metaEvent && metaPixelId && metaAccessToken) {
       const metaPayload = {
         data: [{
           event_name: metaEvent,
@@ -163,14 +172,13 @@ export default {
             page_referrer: eventUrl,
             ...eventUtms
           }
-        }],
-        test_event_code: metaTestCode
+        }]
       }
 
-      metaPromise = metaService(metaPayload, meta, env)
+      metaPromise = metaService({ metaPayload, metaPixelId, metaAccessToken, metaTestCode })
     }
 
-    if (gaEvent && gaMeasurementId && env.GA_ACCESS_TOKEN) {
+    if (gaEvent && gaMeasurementId && gaSecretKey) {
       const gaPayload = {
         client_id: userId,
         events: [{
@@ -185,13 +193,13 @@ export default {
         }]
       }
 
-      gaPromise = gaService(gaPayload, meta, env)
+      gaPromise = gaService({ gaPayload, gaMeasurementId, gaSecretKey })
     }
 
-    if (cookieGclid && gadsConversionLabel && env.GADS_CUSTOMER_ID && env.GADS_ACCESS_TOKEN) {
+    if (cookieGclid && gadsConversionLabel && gadsCustomerId && gadsAccessToken && gadsDeveloperToken) {
       const gadsPayload = {
         conversions: [{
-          conversionAction: `customers/${env.GADS_CUSTOMER_ID}/conversionActions/${gadsConversionLabel}`,
+          conversionAction: `customers/${gadsCustomerId}/conversionActions/${gadsConversionLabel}`,
           gclid: cookieGclid,
           conversionDateTime: new Date().toISOString().replace('T', ' ').replace('Z', '+00:00'),
           conversionValue: 1,
@@ -205,7 +213,7 @@ export default {
         partialFailure: true
       }
 
-      gadsPromise = gadsService(gadsPayload, meta, env)
+      gadsPromise = gadsService({ gadsPayload, gadsCustomerId, gadsAccessToken, gadsDeveloperToken })
     }
 
     const [metaResult, gaResult, gadsResult] = await Promise.all([
@@ -216,9 +224,9 @@ export default {
 
     return new Response(
       JSON.stringify({
-        meta: metaResult,
-        ga: gaResult,
-        gads: gadsResult
+        ['Meta']: metaResult,
+        ['Google Analytics']: gaResult,
+        ['Google Ads']: gadsResult
       }),
       {
         status: 200,
